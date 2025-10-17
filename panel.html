@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>GgrimmCoach Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0b0f14; --card:#131a22; --text:#e6eef7; --muted:#9ab; --acc:#6fd3ff; }
+    body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Arial; background: var(--bg); color: var(--text); }
+    header { padding:16px 20px; border-bottom:1px solid #1f2a36; display:flex; gap:12px; align-items:center; }
+    header h1 { font-size:18px; margin:0; }
+    main { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:16px; }
+    .card { background: var(--card); border:1px solid #1f2a36; border-radius:12px; padding:14px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    textarea { width:100%; min-height:180px; background:#0d141b; color:var(--text); border:1px solid #22303f; border-radius:10px; padding:10px; }
+    button { background:#0d7aa6; border:none; color:white; padding:10px 14px; border-radius:10px; cursor:pointer; }
+    button:hover { filter: brightness(1.1); }
+    .muted{color:var(--muted); font-size:12px;}
+    #advice { white-space:pre-wrap; line-height:1.35; font-size:16px; }
+    .title { font-size:12px; color:var(--muted); margin-bottom:6px; }
+    input[type=text]{ width:100%; background:#0d141b; color:var(--text); border:1px solid #22303f; border-radius:8px; padding:8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GgrimmCoach Panel</h1>
+    <span class="muted">Independent AI battle coach (not affiliated with Nintendo/Game Freak/TPCi/Pokémon Showdown)</span>
+  </header>
+  <main>
+    <section class="card">
+      <div class="title">Upload Team (Types REQUIRED)</div>
+      <textarea id="team" placeholder="Paste your Showdown Import/Export here.
+Include lines like:
+Type: Flying/Steel"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="upload">Upload Team</button>
+        <span id="teamStatus" class="muted">POST to /team</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="title">Live Advice</div>
+      <div id="meta" class="muted">Disconnected</div>
+      <div id="advice" style="margin-top:6px;">Open a battle. Advice appears at team preview and each new turn.</div>
+    </section>
+
+    <section class="card" style="grid-column: span 2;">
+      <div class="title">Manual POST (optional)</div>
+      <div class="row">
+        <input id="logtext" type="text" placeholder="Paste battle log text here (for testing)"/>
+        <button id="sendlog">POST /log</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">Normally you don’t need this—the userscript sends logs automatically.</div>
+    </section>
+  </main>
+
+  <script>
+    const teamEl = document.getElementById('team');
+    const statusEl = document.getElementById('teamStatus');
+    document.getElementById('upload').onclick = async () => {
+      const txt = teamEl.value.trim();
+      if (!txt) { statusEl.textContent = 'Paste a team first.'; return; }
+      try {
+        const r = await fetch('http://localhost:6060/team', { method:'POST', headers:{'Content-Type':'text/plain'}, body:txt });
+        const j = await r.json(); statusEl.textContent = j.ok ? ('Team loaded: '+(j.mons||[]).join(', ')) : ('Error: '+j.error);
+      } catch(e){ statusEl.textContent = 'Error '+e; }
+    };
+
+    const meta = document.getElementById('meta');
+    const advice = document.getElementById('advice');
+    function connectWS(){
+      const ws = new WebSocket('ws://localhost:6061');
+      ws.onopen = ()=> meta.textContent='Connected';
+      ws.onclose= ()=> { meta.textContent='Disconnected — retrying…'; setTimeout(connectWS, 1000); };
+      ws.onmessage = ev => {
+        try { const d = JSON.parse(ev.data);
+          if (d.title) meta.textContent = d.title;
+          if (d.analysis) advice.textContent = d.analysis;
+        } catch {}
+      };
+    }
+    connectWS();
+
+    document.getElementById('sendlog').onclick = async () => {
+      const t = document.getElementById('logtext').value;
+      if (!t) return;
+      await fetch('http://localhost:6060/log', { method:'POST', headers:{'Content-Type':'text/plain'}, body:t });
+    };
+  </script>
+</body>
+</html>
